@@ -1,0 +1,25 @@
+# STEP: Git will ignore anything matching these patterns (won’t commit them).
+
+# ---- Python cache & build artifacts ----
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# ---- Virtual environments (optional) ----
+.venv/
+venv/
+env/
+
+# ---- Editors / OS clutter ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---- Local data & logs (captures stay local; not in repo) ----
+*.ndjson
+*.csv
+logs/
+captures/

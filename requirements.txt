@@ -1,0 +1,7 @@
+### `requirements.txt`
+```txt
+# STEP: this file lists Python packages needed to run the project.
+# Install them with:  pip install -r requirements.txt
+
+# Serial I/O for CLI/DATA UARTs
+pyserial>=3.5
