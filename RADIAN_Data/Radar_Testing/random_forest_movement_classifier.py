@@ -38,7 +38,7 @@ def generate_radar_training_data(num_frames=200, max_points=5):
             })
 
     df = pd.DataFrame(data)
-    df.to_csv("radar_training_data.csv", index=False)
+    df.to_csv("radar_movement_training_data.csv", index=False)
     print(f"[INFO] Saved {len(df)} data points to radar_training_data.csv")
     return df
 
