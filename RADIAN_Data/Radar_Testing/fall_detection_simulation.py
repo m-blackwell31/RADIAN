@@ -7,8 +7,8 @@ import numpy as np
 # ---------------------------------------------------------
 # PARAMETERS
 # ---------------------------------------------------------
-STATIC_THRESHOLD = 0.6   # % of points classified static after fall
-Z_DROP_THRESHOLD = 0.5   # meters drop indicating fall
+STATIC_THRESHOLD = 0.5   # % of points classified static after fall
+Z_DROP_THRESHOLD = 0.3   # meters drop indicating fall
 STILL_FRAMES = 5         # how many frames person stays still
 
 # ---------------------------------------------------------
