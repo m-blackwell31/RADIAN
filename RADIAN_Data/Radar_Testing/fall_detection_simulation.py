@@ -61,4 +61,30 @@ def detect_fall(model, num_frames=60):
         # Check fall condition
         if len(history) > 2:
             z_change = history[-2]["avg_z"] - avg_z
-            if
+            if (z_change > Z_DROP_THRESHOLD and static_ratio > STATIC_THRESHOLD):
+                print(f"\n🚨 Fall detected at frame {frame_idx}!")
+                fall_detected = True
+                show_recent_frames(history)
+                break
+
+        time.sleep(0.05)  # simulate real-time stream
+
+    if not fall_detected:
+        print("\n✅ No fall detected in simulation.")
+
+# ---------------------------------------------------------
+# VISUALIZATION HELPERS
+# ---------------------------------------------------------
+def show_recent_frames(history, lookback=10):
+    """Display the last few frames to see what triggered the fall."""
+    print("\n--- Recent Frames ---")
+    recent = history[-lookback:]
+    for h in recent:
+        print(f"Frame {h['frame']:3d}: avg_z={h['avg_z']:.2f}, static_ratio={h['static_ratio']:.2f}")
+
+# ---------------------------------------------------------
+# MAIN
+# ---------------------------------------------------------
+if __name__ == "__main__":
+    print("[INFO] Starting fall detection simulation...\n")
+    detect_fall(model)
