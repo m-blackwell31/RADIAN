@@ -59,13 +59,20 @@ def detect_fall(model, num_frames=60):
         history.append({"frame": frame_idx, "avg_z": avg_z, "static_ratio": static_ratio})
 
         # Check fall condition
-        if len(history) > 2:
-            z_change = history[-2]["avg_z"] - avg_z
-            if (z_change > Z_DROP_THRESHOLD and static_ratio > STATIC_THRESHOLD):
-                print(f"\n🚨 Fall detected at frame {frame_idx}!")
-                fall_detected = True
-                show_recent_frames(history)
-                break
+        if len(history) > STILL_FRAMES:
+            recent = history[-STILL_FRAMES:]
+            prev = history[-(2*STILL_FRAMES):-STILL_FRAMES]
+            if len(prev) == STILL_FRAMES:
+                z_before = np.mean([f["avg_z"] for f in prev])
+                z_after = np.mean([f["avg_z"] for f in recent])
+                z_change = z_before - z_after
+                avg_static = np.mean([f["static_ratio"] for f in recent])
+                if z_change > Z_DROP_THRESHOLD and avg_static > STATIC_THRESHOLD:
+                    print(f"\n🚨 Fall detected at frame {frame_idx}!")
+                    show_recent_frames(history)
+                    fall_detected = True
+                    break
+
 
         time.sleep(0.05)  # simulate real-time stream
 
