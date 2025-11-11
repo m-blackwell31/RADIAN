@@ -34,7 +34,7 @@ def generate_dummy_frame(num_points=5, z_base=1.0, z_noise=0.1, v_scale=1.0):
 # ---------------------------------------------------------
 # FALL DETECTION LOGIC
 # ---------------------------------------------------------
-def detect_fall(model, num_frames=60):
+def detect_fall(model, num_frames=100):
     """Simulate radar stream and detect falls."""
     # Randomly decide if a fall happens
     fall_start = random.choice([None, random.randint(15, 40)])
