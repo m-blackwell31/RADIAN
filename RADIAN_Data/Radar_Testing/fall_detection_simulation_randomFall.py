@@ -14,7 +14,7 @@ STILL_FRAMES = 5         # how many frames person stays still
 # ---------------------------------------------------------
 # LOAD TRAINED MODEL
 # ---------------------------------------------------------
-model = joblib.load("radar_random_forest.pkl")
+model = joblib.load("radar_random_forest_robust.pkl")
 print("[INFO] Loaded trained Random Forest model")
 
 # ---------------------------------------------------------
