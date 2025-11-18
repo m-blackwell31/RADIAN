@@ -159,3 +159,145 @@ if __name__ == "__main__":
 
     print("\n[STEP 3] Testing with simulated radar frames...")
     test_with_new_dummy_data(model)
+
+
+
+# ---------------------------------------------------------
+# STEP 1: Generate radar-like dummy data (REALISTIC)
+# ---------------------------------------------------------
+
+def add_noise(value, sigma=0.05):
+    """Gaussian noise to simulate radar measurement noise."""
+    return value + random.gauss(0, sigma)
+
+def generate_cluster_center():
+    """Returns the center of a body-reflection cluster."""
+    return (
+        random.uniform(-1.2, 1.2),
+        random.uniform(-1.2, 1.2),
+        random.uniform(0.1, 1.6)
+    )
+
+def generate_radar_training_data(num_frames=200, max_clusters=3):
+    """
+    Creates realistic radar-like data with:
+      - noise & jitter
+      - slow drift
+      - multi-point Doppler clusters
+      - nonlinear movement patterns
+      - ambiguous cases
+      - label noise
+    Resulting accuracy should be around 85–95%.
+    """
+    data = []
+
+    # Long-term drift (slow body lean or sway)
+    drift_x = random.uniform(-0.3, 0.3)
+    drift_y = random.uniform(-0.3, 0.3)
+    drift_z = random.uniform(-0.2, 0.2)
+
+    prev_z = None
+    prev_v = None
+
+    for frame in range(num_frames):
+
+        # Frame-level jitter (radar noise floor)
+        jitter_x = random.uniform(-0.05, 0.05)
+        jitter_y = random.uniform(-0.05, 0.05)
+        jitter_z = random.uniform(-0.05, 0.05)
+
+        # Body clusters (torso, legs, arm)
+        num_clusters = random.randint(1, max_clusters)
+        cluster_centers = [generate_cluster_center() for _ in range(num_clusters)]
+
+        for cx, cy, cz in cluster_centers:
+            
+            num_points = random.randint(1, 4)  # multi-reflection Doppler
+        
+            for _ in range(num_points):
+
+                # Apply slow drift over time
+                dx = drift_x * (frame / num_frames)
+                dy = drift_y * (frame / num_frames)
+                dz = drift_z * (frame / num_frames)
+
+                # Position of reflected point
+                x = add_noise(cx + jitter_x + dx)
+                y = add_noise(cy + jitter_y + dy)
+                z = add_noise(cz + jitter_z + dz)
+
+                # Vertical movement pattern (breathing, leaning, steps)
+                vertical_shift = random.uniform(-0.06, 0.06)
+                if random.random() < 0.15:
+                    z += vertical_shift  # small vertical movement
+
+                # Doppler velocity generation
+                base_v = random.uniform(-0.25, 0.25)
+
+                # Random burst events (movement frames)
+                if random.random() < 0.25:
+                    v = random.uniform(-1.0, 1.0)  # real movement
+                else:
+                    v = base_v  # mostly static
+
+                # Compute Δz (vertical motion cue)
+                if prev_z is not None:
+                    delta_z = z - prev_z
+                else:
+                    delta_z = 0
+
+                # Compute Δv
+                if prev_v is not None:
+                    delta_v = v - prev_v
+                else:
+                    delta_v = 0
+
+                prev_z = z
+                prev_v = v
+
+                # -------------------------------
+                # Realistic Label Assignment
+                # -------------------------------
+                # Motion is determined by multiple cues:
+                #   - velocity magnitude
+                #   - vertical change
+                #   - jitter bursts
+                #   - random ambiguity near threshold
+                # -------------------------------
+
+                motion_score = 0
+
+                # Velocity effect
+                if abs(v) > 0.45:
+                    motion_score += 1
+                if abs(v) > 0.9:
+                    motion_score += 1  # strong movement
+
+                # Vertical movement effect
+                if abs(delta_z) > 0.10:
+                    motion_score += 1  # small step / torso shift
+
+                # Frame jitter interpreted as false movement
+                if random.random() < 0.03:
+                    motion_score += 1  # false positive noise
+
+                # Final label
+                label = 1 if motion_score >= 2 else 0
+
+                # Label noise — real sensors are imperfect
+                if random.random() < 0.05:
+                    label = 1 - label
+
+                data.append({
+                    "frame": frame,
+                    "x": x,
+                    "y": y,
+                    "z": z,
+                    "v": v,
+                    "label": label
+                })
+
+    df = pd.DataFrame(data)
+    df.to_csv("radar_movement_training_data.csv", index=False)
+    print(f"[INFO] Saved {len(df)} data points to radar_training_data.csv")
+    return df
