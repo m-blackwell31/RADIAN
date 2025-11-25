@@ -67,25 +67,22 @@ def edgecase_frames_to_points(frames, label):
 
 def generate_edgecase_data(samples_per_case=800):
     """
-    Calls each synthetic movement generator and returns
-    a large combined dataframe.
+    Calls each synthetic movement generator and returns a large combined dataframe.
     Each generator returns:
-        list of {x,y,z,v,label}
+        (frames_list, label)
     """
     all_data = []
 
-for generator in EDGECASE_GENERATORS:
-    print(f"[EDGECASE] Generating: {generator.__name__}")
+    for generator in EDGECASE_GENERATORS:
+        print(f"[EDGECASE] Generating: {generator.__name__}")
 
-    # Call generator (your functions already accept samples_per_case)
-    frames, label = generator(samples_per_case)
+        frames, label = generator(samples_per_case)
 
-    # Convert frames -> point dictionaries
-    case_data = edgecase_frames_to_points(frames, label)
+        # Convert frames -> point dictionaries
+        case_data = edgecase_frames_to_points(frames, label)
 
-    # Add to training data
-    all_data.extend(case_data)
-
+        # Append
+        all_data.extend(case_data)
 
     df = pd.DataFrame(all_data)
     print(f"[EDGECASE] Generated {len(df)} edge-case points.")
