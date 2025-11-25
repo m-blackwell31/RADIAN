@@ -39,6 +39,37 @@ def generate_cluster_center():
         random.uniform(-1.2, 1.2),
         random.uniform(0.1, 1.6)
     )
+# ---------------------------------------------------------
+# Defining the function to generate the edge case data
+# --------------------------------------------------------- 
+
+def generate_edgecase_data(samples_per_case=800):
+    """
+    Calls each synthetic movement generator and returns
+    a large combined dataframe.
+    Each generator returns:
+        list of {x,y,z,v,label}
+    """
+    all_data = []
+
+    for generator in EDGECASE_GENERATORS:
+        print(f"[EDGECASE] Generating: {generator.__name__}")
+
+        case_data = generator(samples_per_case)
+
+        for point in case_data:
+            all_data.append({
+                "frame": -1,  # synthetic
+                "x": point["x"],
+                "y": point["y"],
+                "z": point["z"],
+                "v": point["v"],
+                "label": point["label"]
+            })
+
+    df = pd.DataFrame(all_data)
+    print(f"[EDGECASE] Generated {len(df)} edge-case points.")
+    return df
 
 def generate_radar_training_data(num_frames=200, max_clusters=3):
     """
@@ -182,11 +213,11 @@ def train_random_forest(df):
         X, y, test_size=0.2, random_state=42
     )
 
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model = RandomForestClassifier(n_estimators=120, random_state=42)
     model.fit(X_train, y_train)
 
-    joblib.dump(model, "radar_random_forest_robust.pkl")
-    print("[INFO] Model saved to radar_random_forest_robust.pkl")
+    joblib.dump(model, "radar_random_forest_even_more_robust.pkl")
+    print("[INFO] Model saved to radar_random_forest_even_more_robust.pkl")
 
     y_pred = model.predict(X_test)
     print("\n=== Validation Results ===")
@@ -230,11 +261,19 @@ def test_with_new_dummy_data(model, num_frames=5):
 # ---------------------------------------------------------
 
 if __name__ == "__main__":
-    print("[STEP 1] Generating training data...")
-    df = generate_radar_training_data(num_frames=300)
+    print("[STEP 0] Generating edge-case data...")
+    df_edge = generate_edgecase_data(samples_per_case=800)  # ~7200 points
 
-    print("\n[STEP 2] Training Random Forest...")
+    print("\n[STEP 1] Generating baseline radar data...")
+    df_radar = generate_radar_training_data(num_frames=400)  # ~4k–6k points
+
+    print("\n[STEP 2] Combining datasets...")
+    df = pd.concat([df_edge, df_radar], ignore_index=True)
+    df.to_csv("combined_radar_training.csv", index=False)
+    print(f"[INFO] Total combined dataset size = {len(df)} points.")
+
+    print("\n[STEP 3] Training Random Forest...")
     model = train_random_forest(df)
 
-    print("\n[STEP 3] Testing with simulated radar frames...")
+    print("\n[STEP 4] Testing with fresh dummy frames...")
     test_with_new_dummy_data(model)
