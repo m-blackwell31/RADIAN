@@ -43,6 +43,28 @@ def generate_cluster_center():
 # Defining the function to generate the edge case data
 # --------------------------------------------------------- 
 
+def edgecase_frames_to_points(frames, label):
+    """
+    Converts a list of Nx4 numpy arrays into the same dict format
+    used by generate_radar_training_data().
+    """
+    points = []
+
+    # Loop over each frame array
+    for frame_index, frame_arr in enumerate(frames):
+        for (x, y, z, v) in frame_arr:
+            points.append({
+                "frame": -1,      # synthetic training data
+                "x": float(x),
+                "y": float(y),
+                "z": float(z),
+                "v": float(v),
+                "label": label
+            })
+
+    return points
+
+
 def generate_edgecase_data(samples_per_case=800):
     """
     Calls each synthetic movement generator and returns
@@ -52,20 +74,18 @@ def generate_edgecase_data(samples_per_case=800):
     """
     all_data = []
 
-    for generator in EDGECASE_GENERATORS:
-        print(f"[EDGECASE] Generating: {generator.__name__}")
+for generator in EDGECASE_GENERATORS:
+    print(f"[EDGECASE] Generating: {generator.__name__}")
 
-        case_data = generator(samples_per_case)
+    # Call generator (your functions already accept samples_per_case)
+    frames, label = generator(samples_per_case)
 
-        for point in case_data:
-            all_data.append({
-                "frame": -1,  # synthetic
-                "x": point["x"],
-                "y": point["y"],
-                "z": point["z"],
-                "v": point["v"],
-                "label": point["label"]
-            })
+    # Convert frames -> point dictionaries
+    case_data = edgecase_frames_to_points(frames, label)
+
+    # Add to training data
+    all_data.extend(case_data)
+
 
     df = pd.DataFrame(all_data)
     print(f"[EDGECASE] Generated {len(df)} edge-case points.")
