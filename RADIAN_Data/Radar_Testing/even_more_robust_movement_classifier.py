@@ -286,6 +286,11 @@ if __name__ == "__main__":
 
     print("\n[STEP 2] Combining datasets...")
     df = pd.concat([df_edge, df_radar], ignore_index=True)
+    # --- FIXING LABEL TYPE ---
+    df["label"] = pd.to_numeric(df["label"], errors="coerce")
+    df = df.dropna(subset=["label"])   # removes bad rows
+    df["label"] = df["label"].astype(int)
+    # -----------------------
     df.to_csv("combined_radar_training.csv", index=False)
     print(f"[INFO] Total combined dataset size = {len(df)} points.")
 
