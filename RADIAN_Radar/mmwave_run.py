@@ -21,6 +21,7 @@ Notes:
 import os, sys, time, struct, json
 import serial
 from serial.tools import list_ports
+import numpy as np
 
 # ========= USER SETTINGS =========
 # On your laptop (Windows):
@@ -217,6 +218,81 @@ def parse_tlvs(payload: bytes, num_tlvs: int):
         # Add more TLV parsers here as needed (e.g., tracked objects)
     return out
 
+def filter_person_points_from_list(points):
+    """
+    Room-agnostic person filter.
+
+    Uses only generic human + indoor constraints:
+      - Plausible indoor distance from radar (0.3–7 m)
+      - Broad left/right span in front of sensor (±4 m)
+      - Plausible vertical range relative to sensor (±2.5 m)
+      - Minimum radial speed to reject static clutter (~0.2 m/s)
+
+    This should work reasonably in most indoor placements without user tuning.
+    """
+    if not points:
+        empty = np.array([], dtype=float)
+        return {"x": empty, "y": empty, "z": empty, "v": empty}
+
+    arr = np.array(points, dtype=float)  # shape (N, 4)
+    x = arr[:, 0]
+    y = arr[:, 1]
+    z = arr[:, 2]
+    v = arr[:, 3]
+
+    # clamp velocities (rare noise / bad frames)
+    v = np.clip(v, -5.0, 5.0)
+
+    # ---- Generic indoor distance range (Y) ----
+    # Ignore objects extremely close (< 0.3 m) or very far (> 7 m).
+    # 7 m is longer than most bedrooms and many living rooms, but still realistic indoors.
+    y_min, y_max = 0.3, 7.0
+
+    # ---- Generic left/right span (X) ----
+    # Keep a wide zone in front of the radar; ±4 m handles most rooms and hallways.
+    x_min, x_max = -4.0, 4.0
+
+    # ---- Generic vertical range (Z) ----
+    # We don't know mounting height, so just allow ±2.5 m from the sensor.
+    # That covers a person standing, sitting, or on the floor relative to sensor height.
+    z_min, z_max = -2.5, 2.5
+
+    # ---- Minimum speed (radial) ----
+    # 0.2 m/s ~ slow indoor movement; filters out mostly static clutter and noise.
+    min_speed = 0.2
+
+    roi_mask = (
+        (y >= y_min) & (y <= y_max) &
+        (x >= x_min) & (x <= x_max) &
+        (z >= z_min) & (z <= z_max)
+    )
+
+    motion_mask = np.abs(v) >= min_speed
+
+    final_mask = roi_mask & motion_mask
+
+    return {
+        "x": x[final_mask],
+        "y": y[final_mask],
+        "z": z[final_mask],
+        "v": v[final_mask],
+    }
+
+def estimate_person_center(person_points):
+    """
+    Returns the average (x, y, z, v) of all person-like points, or None
+    if there are no such points.
+    """
+    x = person_points["x"]
+    if x.size == 0:
+        return None
+
+    cx = float(np.mean(person_points["x"]))
+    cy = float(np.mean(person_points["y"]))
+    cz = float(np.mean(person_points["z"]))
+    cv = float(np.mean(person_points["v"]))
+    return cx, cy, cz, cv
+
 def main():
     # Human status → STDERR (keeps STDOUT clean for NDJSON)
     print(f"[INFO] Opening ports: CLI={CLI_PORT} ({CLI_BAUD})  DATA={DATA_PORT} ({DATA_BAUD})",
@@ -241,19 +317,58 @@ def main():
             parsed = parse_tlvs(payload, header["numTLVs"])
             pts = parsed["points"]
 
+            # --- person-focused filtering ----------------------
+            person_pts = filter_person_points_from_list(pts)        
+            person_center = estimate_person_center(person_pts)      
+            num_person_pts = int(person_pts["x"].size)
+            confidence = min(1.0, num_person_pts / 20.0)    # 0-1 scale
+
+            # Build person info for JSON                               
+            person_obj = {                                             
+                "num_points": num_person_pts, 
+                "confidence" : confidence,             
+                "center": None,                                       
+            }                                                        
+            if person_center is not None:                              
+                cx, cy, cz, cv = person_center                        
+                person_obj["center"] = {                               
+                    "x": cx,                                           
+                    "y": cy,                                           
+                    "z": cz,                                           
+                    "v": cv,                                         
+                }                                                      
+            # -------------------------------------------------------
+
             # ---- NDJSON frame to STDOUT (for AI) ----
             frame_obj = {
                 "ts": time.time(),  # producer timestamp
                 "frame": int(header["frameNumber"]),
                 "num_points": len(pts),
-                "points": [{"x": float(x), "y": float(y), "z": float(z), "v": float(v)} for (x,y,z,v) in pts]
+                "person": person_obj,
             }
             print(json.dumps(frame_obj), flush=True)
 
             # ---- minimal human log to STDERR ----
-            print(f"[FRAME {header['frameNumber']}] points={len(pts)} "
-                  f"(numDetectedObj={header['numDetectedObj']})",
-                  file=sys.stderr, flush=True)
+            if person_center is not None:
+                print(
+                    f"[FRAME {header['frameNumber']}] "
+                    f"points={len(pts)} "
+                    f"(numDetectedObj={header['numDetectedObj']}) "
+                    f"person_pts={num_person_pts} "
+                    f"conf={confidence:.2f} "
+                    f"center=(x={cx:.2f}, y={cy:.2f}, z={cz:.2f}, v={cv:.2f})",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            else:                                                   
+                print(
+                    f"[FRAME {header['frameNumber']}] "
+                    f"points={len(pts)} "
+                    f"(numDetectedObj={header['numDetectedObj']}) "
+                    f"person_pts=0 conf=0.00",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
     except KeyboardInterrupt:
         print("\n[INFO] Stopping (Ctrl+C).", file=sys.stderr)
