@@ -167,11 +167,20 @@ def detect_fall(model, num_frames=100):
 # ---------------------------------------------------------
 # VISUALIZATION HELPERS
 # ---------------------------------------------------------
-def show_recent_frames(history, lookback=10):
-    print("\n--- Recent Frames ---")
+def show_recent_frames(history, lookback=75):
+    """
+    Print the last N frames. Default is 75.
+    """
+    print(f"\n--- Showing last {lookback} frames ---")
     recent = history[-lookback:]
+
     for h in recent:
-        print(f"Frame {h['frame']:3d}: avg_z={h['avg_z']:.2f}, static_ratio={h['static_ratio']:.2f}")
+        print(
+            f"Frame {h['frame']:3d}: "
+            f"avg_z={h['avg_z']:.3f}, "
+            f"static_ratio={h['static_ratio']:.3f}"
+        )
+
 
 # ---------------------------------------------------------
 # MAIN
