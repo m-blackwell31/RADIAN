@@ -109,13 +109,20 @@ def detect_fall(model, num_frames=100):
     print(f"[INFO] Simulation mode: {mode}")
 
     # -----------------------------------------------------
-    # EDGECASE MODE
+    # EDGECASE MODE (NOW USES REAL FALL DETECTION LOGIC)
     # -----------------------------------------------------
     if mode == "edgecase":
         frames, label = selected_generator()
         edge_frames = [edgecase_frame_to_df(f) for f in frames]
 
+        history = []
+        fall_detected = False
+
+        print(f"[INFO] Running edge case: {selected_generator.__name__}")
+
         for frame_idx, df in enumerate(edge_frames):
+
+            # Run through model exactly like normal fall
             predictions = model.predict(df[["x", "y", "z", "v"]])
             df["predicted_label"] = predictions
 
@@ -128,9 +135,33 @@ def detect_fall(model, num_frames=100):
                 "static_ratio": static_ratio
             })
 
+            # -------------------------------
+            # FALL CHECK (same logic as normal)
+            # -------------------------------
+            if len(history) > STILL_FRAMES:
+                recent = history[-STILL_FRAMES:]
+                prev = history[-(2 * STILL_FRAMES):-STILL_FRAMES]
+
+                if len(prev) == STILL_FRAMES:
+                    z_before = np.mean([f["avg_z"] for f in prev])
+                    z_after = np.mean([f["avg_z"] for f in recent])
+                    z_change = z_before - z_after
+                    avg_static = np.mean([f["static_ratio"] for f in recent])
+
+                    if z_change > Z_DROP_THRESHOLD and avg_static > STATIC_THRESHOLD:
+                        print(f"\n🚨 Fall detected (edge case) at frame {frame_idx}!")
+                        show_recent_frames(history)
+                        fall_detected = True
+                        break
+
             time.sleep(0.05)
 
-        print("\n✅ Edge case simulation completed (no fall expected).")
+        # ------------------------------
+        # FINAL OUTPUT – SAME AS NORMAL
+        # ------------------------------
+        if not fall_detected:
+            print("\n✅ No fall detected in simulation (edge case).")
+
         show_recent_frames(history)
         return
 
@@ -169,7 +200,7 @@ def detect_fall(model, num_frames=100):
         # FALL CHECK
         if len(history) > STILL_FRAMES:
             recent = history[-STILL_FRAMES:]
-            prev = history[-(2*STILL_FRAMES):-STILL_FRAMES]
+            prev = history[-(2 * STILL_FRAMES):-STILL_FRAMES]
 
             if len(prev) == STILL_FRAMES:
                 z_before = np.mean([f["avg_z"] for f in prev])
