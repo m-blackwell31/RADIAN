@@ -53,6 +53,7 @@ TLV_HDR_LEN = struct.calcsize(TLV_HDR_FMT)
 # TLV types we parse (add more if needed)
 TLV_DETECTED_POINTS = 1   # float32 x,y,z,velocity per point
 TLV_SIDE_INFO       = 12  # optional int16 snr/noise per point
+last_center = None        # global for simple tracking across frames
 
 def send_cmd(cli: serial.Serial, cmd: str) -> bool:
     """
@@ -226,10 +227,13 @@ def filter_person_points_from_list(points):
       - Plausible indoor distance from radar (0.3–7 m)
       - Broad left/right span in front of sensor (±4 m)
       - Plausible vertical range relative to sensor (±2.5 m)
-      - Minimum radial speed to reject static clutter (~0.2 m/s)
+      - Minimum radial speed to reject static clutter (~0.05 m/s)
 
     This should work reasonably in most indoor placements without user tuning.
     """
+
+    global last_center 
+
     if not points:
         empty = np.array([], dtype=float)
         return {"x": empty, "y": empty, "z": empty, "v": empty}
@@ -257,19 +261,32 @@ def filter_person_points_from_list(points):
     # That covers a person standing, sitting, or on the floor relative to sensor height.
     z_min, z_max = -2.5, 2.5
 
-    # ---- Minimum speed (radial) ----
-    # 0.2 m/s ~ slow indoor movement; filters out mostly static clutter and noise.
-    min_speed = 0.2
-
     roi_mask = (
         (y >= y_min) & (y <= y_max) &
         (x >= x_min) & (x <= x_max) &
         (z >= z_min) & (z <= z_max)
     )
 
+    # allow VERY low motion to be counted
+    min_speed = 0.05
     motion_mask = np.abs(v) >= min_speed
 
-    final_mask = roi_mask & motion_mask
+    # proximity to last known center to include static people
+    if last_center is not None:
+        cx, cy, cz, _ = last_center
+        proximity_mask = (
+            (np.abs(x - cx) <= 0.75) &
+            (np.abs(y - cy) <= 0.75) &
+            (np.abs(z - cz) <= 1.0)
+        )
+    else:
+        proximity_mask = np.zeros_like(x, dtype=bool)
+
+    # tracking-aware final mask
+    if last_center is None:
+        final_mask = roi_mask & motion_mask
+    else:
+        final_mask = roi_mask & (motion_mask | proximity_mask)
 
     return {
         "x": x[final_mask],
@@ -321,7 +338,22 @@ def main():
             person_pts = filter_person_points_from_list(pts)        
             person_center = estimate_person_center(person_pts)      
             num_person_pts = int(person_pts["x"].size)
-            confidence = min(1.0, num_person_pts / 20.0)    # 0-1 scale
+            confidence = min(1.0, num_person_pts / 10.0)    # 0-1 scale out of 10 points
+
+            global last_center
+            if person_center is not None:
+                if last_center is None:
+                    last_center = person_center
+                else:
+                    alpha = 0.3     # smoothing factor: 0<alpha<=1
+                    lx, ly, lz, lv = last_center
+                    cx, cy, cz, cv = person_center
+                    last_center = (
+                        alpha * cx + (1 - alpha) * lx,
+                        alpha * cy + (1 - alpha) * ly,
+                        alpha * cz + (1 - alpha) * lz,
+                        alpha * cv + (1 - alpha) * lv,
+                    )
 
             # Build person info for JSON                               
             person_obj = {                                             
@@ -329,13 +361,13 @@ def main():
                 "confidence" : confidence,             
                 "center": None,                                       
             }                                                        
-            if person_center is not None:                              
-                cx, cy, cz, cv = person_center                        
+            if last_center is not None:                              
+                cx, cy, cz, cv = last_center                        
                 person_obj["center"] = {                               
-                    "x": cx,                                           
-                    "y": cy,                                           
-                    "z": cz,                                           
-                    "v": cv,                                         
+                    "x": round(cx, 2),                                           
+                    "y": round(cy, 2),                                           
+                    "z": round(cz, 2),                                           
+                    "v": round(cv, 2),                                         
                 }                                                      
             # -------------------------------------------------------
 
@@ -349,7 +381,8 @@ def main():
             print(json.dumps(frame_obj), flush=True)
 
             # ---- minimal human log to STDERR ----
-            if person_center is not None:
+            if last_center is not None:
+                cx, cy, cz, cv = last_center
                 print(
                     f"[FRAME {header['frameNumber']}] "
                     f"points={len(pts)} "
