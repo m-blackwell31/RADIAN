@@ -94,24 +94,24 @@ def simulate_kneeling(num_frames=35, points=55):
         frames.append(add_noise(frame))
     return frames, "not_fall"
 
-"""
-def simulate_slow_fall(num_frames=50, points=70):
-    """
+
+#def simulate_slow_fall(num_frames=50, points=70):
+#    """
     #Fall occurs but very slowly (elderly fall, sliding down wall)
-    """
-    frames = []
-    for i in range(num_frames):
-        z_height = 1.6 - 1.5*(i/num_frames)
-        velocity = -0.05
-        frame = np.column_stack([
-            np.random.uniform(-0.3, 0.3, points),
-            np.random.uniform(-0.3, 0.3, points),
-            np.random.normal(z_height, 0.1, points),
-            np.full(points, velocity)
-        ])
-        frames.append(add_noise(frame))
-  return frames, "fall"
-"""
+#    """
+#    frames = []
+#    for i in range(num_frames):
+#        z_height = 1.6 - 1.5*(i/num_frames)
+#        velocity = -0.05
+#        frame = np.column_stack([
+#            np.random.uniform(-0.3, 0.3, points),
+#            np.random.uniform(-0.3, 0.3, points),
+#            np.random.normal(z_height, 0.1, points),
+#            np.full(points, velocity)
+#        ])
+#        frames.append(add_noise(frame))
+#  return frames, "fall"
+  
 
 def simulate_lying_down_slowly(num_frames=50, points=70):
     """
