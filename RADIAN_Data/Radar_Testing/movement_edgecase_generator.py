@@ -94,10 +94,10 @@ def simulate_kneeling(num_frames=35, points=55):
         frames.append(add_noise(frame))
     return frames, "not_fall"
 
-
+"""
 def simulate_slow_fall(num_frames=50, points=70):
     """
-    Fall occurs but very slowly (elderly fall, sliding down wall)
+    #Fall occurs but very slowly (elderly fall, sliding down wall)
     """
     frames = []
     for i in range(num_frames):
@@ -110,7 +110,34 @@ def simulate_slow_fall(num_frames=50, points=70):
             np.full(points, velocity)
         ])
         frames.append(add_noise(frame))
-    return frames, "fall"
+  return frames, "fall"
+"""
+
+def simulate_lying_down_slowly(num_frames=50, points=70):
+    """
+    Person lowers themselves deliberately to the ground.
+    Slow, controlled descent → NOT a fall.
+    Average z decreases from 1.6m → 0.2m across many frames.
+    """
+    frames = []
+    for i in range(num_frames):
+
+        # Smooth intentional descent
+        z_height = 1.6 - 1.4 * (i / num_frames)
+
+        # Very small downward velocity (intentional movement)
+        velocity = -0.02 if i < num_frames * 0.8 else 0
+
+        frame = np.column_stack([
+            np.random.uniform(-0.3, 0.3, points),
+            np.random.uniform(-0.3, 0.3, points),
+            np.random.normal(z_height, 0.08, points),
+            np.full(points, velocity)
+        ])
+
+        frames.append(add_noise(frame))
+
+    return frames, "not_fall"
 
 
 def simulate_trip_recover(num_frames=45, points=60):
