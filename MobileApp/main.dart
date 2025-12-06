@@ -89,7 +89,10 @@ class _RadianAppState extends State<RadianApp> {
         ),
       ),
 
-      home: const _Root()
+      home: _Root(
+        themeMode: _themeMode,
+        onThemeChanged: _setTheme,
+      ),
     );
   }
 }
@@ -97,9 +100,17 @@ class _RadianAppState extends State<RadianApp> {
 // ----------------------------------------------------------
 // MAIN STATEFUL SHELL (_Root)
 // ----------------------------------------------------------
-// Handles navigation (bottom tabs), reminders, alerts, and Gotify state.
+// Handles navigation (bottom tabs), reminders, alerts, theme, and Gotify state.
 class _Root extends StatefulWidget {
-  const _Root({super.key});
+  const _Root({
+    super.key,
+    required this.themeMode,
+    required this.onThemeChanged,
+  });
+
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeChanged;
+
   @override
   State<_Root> createState() => _RootState();
 }
@@ -304,6 +315,8 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
         serverUrl: _serverUrl,
         appToken: _appToken,
         onSave: _saveGotifyConfig,
+        themeMode: widget.themeMode,
+        onThemeChanged: widget.onThemeChanged,
       ),
     ];
 
@@ -485,11 +498,16 @@ class _Settings extends StatefulWidget {
   final String serverUrl;                         // current URL (from _Root)
   final String appToken;                          // current token (from _Root)
   final void Function(String url, String token) onSave; // callback to save
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeChanged;
+
   const _Settings({
     super.key,
     required this.serverUrl,
     required this.appToken,
     required this.onSave,
+    required this.themeMode,
+    required this.onThemeChanged,
   });
 
   @override
@@ -563,6 +581,48 @@ class _SettingsState extends State<_Settings> {
                       FocusScope.of(context).unfocus(); // Close keyboard
                     },
                   ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const ListTile(
+                  leading: Icon(Icons.brightness_6_outlined),
+                  title: Text('Theme'),
+                  subtitle:
+                  Text('Choose light, dark, or follow system setting.'),
+                ),
+                RadioListTile<ThemeMode>(
+                  title: const Text('System default'),
+                  value: ThemeMode.system,
+                  groupValue: widget.themeMode,
+                  onChanged: (mode) {
+                    if (mode != null) widget.onThemeChanged(mode);
+                  },
+                ),
+                RadioListTile<ThemeMode>(
+                  title: const Text('Light'),
+                  value: ThemeMode.light,
+                  groupValue: widget.themeMode,
+                  onChanged: (mode) {
+                    if (mode != null) widget.onThemeChanged(mode);
+                  },
+                ),
+                RadioListTile<ThemeMode>(
+                  title: const Text('Dark'),
+                  value: ThemeMode.dark,
+                  groupValue: widget.themeMode,
+                  onChanged: (mode) {
+                    if (mode != null) widget.onThemeChanged(mode);
+                  },
                 ),
               ],
             ),
