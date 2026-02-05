@@ -1,7 +1,7 @@
 import requests
 
-GOTIFY_URL = "http://10.249.52.19:3000"  # verify port
-APP_TOKEN = "AJTcm8GhyGQKvos"
+GOTIFY_URL = "http://172.20.10.13"  # Using Mitch's hotspot, this is the URL to use
+APP_TOKEN = "AJTcm8GhyGQKvos" #Stays the same, have Mitch use the CLIENT token
 
 def notify(title, message, priority=5):
     try:
@@ -23,5 +23,5 @@ def notify(title, message, priority=5):
 # Test
 notify(
     "Pi Notification",
-    "Test message from Raspberry Pi to Gotify server."
+    "This is a current test of the communication bewtween the Gotify server and flutter RADIAN app. This test occured at 9:45am on Thursday Feb. 5, 2026."
 )
