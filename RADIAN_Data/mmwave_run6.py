@@ -205,16 +205,30 @@ def main():
             ofs = 0
             pts = []
 
-            for _ in range(numTLVs):
-                tlv_type, tlv_len = struct.unpack_from(TLV_HDR_FMT, payload, ofs)
-                tlv_start = ofs + TLV_HDR_LEN
-                tlv_end = tlv_start + tlv_len
-                tlv_data = payload[tlv_start:tlv_end]
+        for _ in range(numTLVs):
 
-                if tlv_type == TLV_DETECTED_POINTS:
-                    pts = parse_detected_points(tlv_data)
+            # Make sure we can read TLV header
+            if ofs + TLV_HDR_LEN > len(payload):
+                break
 
-                ofs = tlv_end
+            tlv_type, tlv_len = struct.unpack_from(TLV_HDR_FMT, payload, ofs)
+
+            tlv_start = ofs + TLV_HDR_LEN
+            tlv_end   = tlv_start + tlv_len
+
+            # Validate TLV length
+            if tlv_len <= 0:
+                break
+
+            if tlv_end > len(payload):
+                break
+
+            tlv_data = payload[tlv_start:tlv_end]
+
+            if tlv_type == TLV_DETECTED_POINTS:
+                pts = parse_detected_points(tlv_data)
+
+            ofs = tlv_end
 
             # -------- Basic Filtering --------
             cand = []
