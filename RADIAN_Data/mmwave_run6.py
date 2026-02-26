@@ -8,7 +8,7 @@ DATA_PORT = "/dev/ttyUSB1"
 CLI_BAUD = 115200
 DATA_BAUD = 921600
 
-CFG_FILE = "your_config.cfg"
+CFG_FILE = "config3.cfg"
 
 MAGIC_WORD = b'\x02\x01\x04\x03\x06\x05\x08\x07'
 HEADER_LEN = 40
