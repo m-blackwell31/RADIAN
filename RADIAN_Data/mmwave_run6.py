@@ -52,14 +52,18 @@ def read_packet(data_port):
 
 
 def parse_detected_points(tlv_data):
-    num_points = struct.unpack_from('H', tlv_data, 0)[0]
     points = []
-    offset = 4
+    rec = 16  # 4 floats per point
+    n_full_points = len(tlv_data) // rec  # only full points
 
-    for _ in range(num_points):
-        x, y, z, v = struct.unpack_from('ffff', tlv_data, offset)
-        points.append((x, y, z, v))
-        offset += 16
+    for i in range(n_full_points):
+        offset = i * rec
+        try:
+            x, y, z, v = struct.unpack_from('<ffff', tlv_data, offset)
+            points.append((x, y, z, v))
+        except struct.error:
+            # If somehow a point is incomplete, just stop parsing
+            break
 
     return points
 
