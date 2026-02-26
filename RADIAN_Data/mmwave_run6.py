@@ -88,7 +88,7 @@ def main():
                 tlv_type, tlv_len = struct.unpack_from('II', packet, offset)
                 offset += TLV_HDR_LEN
 
-                tlv_data = packet[offset:offset + tlv_len - TLV_HDR_LEN]
+                tlv_data = packet[offset:offset + max(0, tlv_len - TLV_HDR_LEN)]
 
                 if tlv_type == TLV_DETECTED_POINTS:
                     points = parse_detected_points(tlv_data)
