@@ -79,7 +79,7 @@ try:
 except ImportError:
     HAS_REQUESTS = False
 
-# ── optional GPIO buzzer ──────────────────────────────────────────────────────
+# ── optional GPIO buzzer ────────────────────────────────────────────
 try:
     import RPi.GPIO as GPIO
     GPIO.setmode(GPIO.BCM)
@@ -413,19 +413,18 @@ class FallDetector:
             return False
         self._last_alert = now
         log.warning(f"🚨 FALL DETECTED  confidence={prob:.1%}  time={ts}")
-        # Buzz the buzzer
         if HAS_GPIO:
             try:
-                import threading, time as _time
+                import threading as _thr, time as _time
                 def _buzz():
                     for _ in range(3):
                         GPIO.output(27, GPIO.HIGH)
                         _time.sleep(0.3)
                         GPIO.output(27, GPIO.LOW)
                         _time.sleep(0.2)
-                threading.Thread(target=_buzz, daemon=True).start()
-            except Exception as e:
-                log.debug(f"Buzzer error: {e}")
+                _thr.Thread(target=_buzz, daemon=True).start()
+            except Exception as be:
+                log.debug(f"Buzzer error: {be}")
         if self.args.gotify_url and self.args.gotify_token:
             send_gotify_alert(
                 self.args.gotify_url, self.args.gotify_token, prob, ts
