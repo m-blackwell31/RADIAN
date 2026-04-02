@@ -79,6 +79,16 @@ try:
 except ImportError:
     HAS_REQUESTS = False
 
+# ── optional GPIO buzzer ────────────────────────────────────────────
+try:
+    import RPi.GPIO as GPIO
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(27, GPIO.OUT)
+    GPIO.output(27, GPIO.LOW)
+    HAS_GPIO = True
+except Exception:
+    HAS_GPIO = False
+
 # ── optional debug dashboard ──────────────────────────────────────────────────
 try:
     from debug_dashboard import Dashboard, DebugState
@@ -406,6 +416,18 @@ class FallDetector:
             return False
         self._last_alert = now
         log.warning(f"🚨 FALL DETECTED  confidence={prob:.1%}  time={ts}")
+        if HAS_GPIO:
+            try:
+                import threading as _thr, time as _time
+                def _buzz():
+                    for _ in range(3):
+                        GPIO.output(27, GPIO.HIGH)
+                        _time.sleep(0.3)
+                        GPIO.output(27, GPIO.LOW)
+                        _time.sleep(0.2)
+                _thr.Thread(target=_buzz, daemon=True).start()
+            except Exception as be:
+                log.debug(f"Buzzer error: {be}")
         if self.args.gotify_url and self.args.gotify_token:
             send_gotify_alert(
                 self.args.gotify_url, self.args.gotify_token, prob, ts
@@ -583,6 +605,12 @@ class FallDetector:
                 self._dashboard.stop()
             if self._proc and self._proc.poll() is None:
                 self._proc.terminate()
+            if HAS_GPIO:
+                try:
+                    GPIO.output(27, GPIO.LOW)
+                    GPIO.cleanup()
+                except Exception:
+                    pass
             log.info(
                 f"Session summary — "
                 f"frames={self.stats['frames']}  "
