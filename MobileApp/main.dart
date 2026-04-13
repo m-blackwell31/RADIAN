@@ -16,6 +16,8 @@ import 'gotify_service.dart';            // Custom file to handle Gotify comms
 import 'package:radian/data/fall_db.dart';
 import 'package:radian/features/fall_log/fall_log_tab.dart';
 import 'package:shared_preferences/shared_preferences.dart'; //for saving theme
+import 'dart:convert';  // for jsonEncode
+import 'package:drift/drift.dart' show Value; // for Drift companions
 
 void main() => runApp(const RadianApp()); // Entry point for Flutter
 
@@ -35,7 +37,7 @@ class _RadianAppState extends State<RadianApp> {
   // --------------------------------------------------------
   // THEME STATE
   // --------------------------------------------------------
-  ThemeMode _themeMode = ThemeMode.system; // default to system theme
+  ThemeMode _themeMode = ThemeMode.light; // default to system theme (light mode)
 
   // Load saved theme preference from Shared Preferences
   @override
@@ -48,14 +50,15 @@ class _RadianAppState extends State<RadianApp> {
     final prefs = await SharedPreferences.getInstance();
     final savedIndex = prefs.getInt('themeMode') ?? 0; // 0=system, 1=light, 2=dark
     setState(() {
-      _themeMode = ThemeMode.values[savedIndex];
+      _themeMode = savedIndex == 1 ? ThemeMode.dark : ThemeMode.light;
     });
   }
 
   // Save theme choice and apply immediately
   Future<void> _setTheme(ThemeMode mode) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('themeMode', mode.index);
+    final value = mode == ThemeMode.dark ? 1 : 0;
+    await prefs.setInt('themeMode', value);
     setState(() {
       _themeMode = mode;
     });
@@ -116,6 +119,7 @@ class _Root extends StatefulWidget {
 }
 
 class _RootState extends State<_Root> with WidgetsBindingObserver {
+  bool _gotifyConnected = false;
   // -------------------------------
   // UI NAVIGATION & ALERT STATE
   // -------------------------------
@@ -128,13 +132,13 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
   bool _needsAttention = false; // True while reminders are active
   Timer? _reminderTimer;        // The periodic reminder timer
   final Duration reminderInterval = const Duration(seconds: 30);
-  _Alert? get _last => _alerts.isEmpty ? null : _alerts.last;
+  _Alert? get _last => _alerts.isEmpty ? null : _alerts.first;
 
   // -------------------------------
   // GOTIFY CONNECTION VARIABLES
   // -------------------------------
   String _serverUrl = '';         // User-entered Gotify server URL
-  String _appToken = '';          // User-entered Gotify app token
+  String _clientToken = '';          // User-entered Gotify app token
   GotifyService? _gotify;         // Active Gotify connection instance
 
   // >>> ADDED: shared DB instance for the Fall Log tab (and optional ingestion)
@@ -174,8 +178,9 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
   // LOCAL ALERT SIMULATION (for demo)
   // ----------------------------------------------------------
   // Adds a "FALL DETECTED" alert manually when the button is pressed.
+  /*
   void _addInitialFallAlert() {
-    _alerts.add(
+    _alerts.insert(0,
       _Alert(
         DateTime.now(),
         'FALL DETECTED',
@@ -186,6 +191,7 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
     _startReminders(); // Begin periodic follow-up reminders
     setState(() {});   // Refresh the UI
   }
+  */
 
   // ----------------------------------------------------------
   // REMINDER HANDLING
@@ -196,7 +202,7 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
     _reminderTimer?.cancel(); // Prevent overlapping timers
     _reminderTimer = Timer.periodic(reminderInterval, (_) {
       if (!_needsAttention) return; // Skip if already acknowledged
-      _alerts.add(
+      _alerts.insert(0,
         _Alert(
           DateTime.now(),
           'Reminder',
@@ -214,7 +220,7 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
     _needsAttention = false;
     _reminderTimer?.cancel();
     _reminderTimer = null;
-    _alerts.add(
+    _alerts.insert(0,
       _Alert(
         DateTime.now(),
         'Acknowledged',
@@ -230,49 +236,55 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
   // ----------------------------------------------------------
 
   // Called every time a new message arrives from the Gotify WebSocket.
-  void _onGotifyMessage(Map<String, dynamic> msg) {
-    // Extract the title/message from Gotify's JSON structure
+  Future<void> _onGotifyMessage(Map<String, dynamic> msg) async {
     final title = (msg['title'] ?? 'Alert').toString();
     final body  = (msg['message'] ?? '').toString();
 
-    // Add this as a new alert in the app and start reminders
-    _alerts.add(_Alert(DateTime.now(), title, body, isReminder: false));
-    _startReminders();
-    setState(() {});
+    _alerts.insert(0, _Alert(DateTime.now(), title, body, isReminder: false));
 
-    // >>> OPTIONAL (commented out): also log falls to DB when Gotify says so.
-    // If your payload contains a type/room/ts, you can insert here.
-    // import 'package:drift/drift.dart' show Value;  // at top if you enable this
-    //
-    // final payload = msg; // or msg['payload'] if you wrap it
-    // if ((payload['type'] ?? '').toString().toLowerCase() == 'fall') {
-    //   final ts = payload['ts'];
-    //   final occurredUtc = (ts is int)
-    //       ? DateTime.fromMillisecondsSinceEpoch(ts * 1000, isUtc: true)
-    //       : DateTime.now().toUtc();
-    //   _fallDb.insertFall(FallEventsCompanion(
-    //     occurredAtUtc: Value(occurredUtc),
-    //     location: Value(payload['room']?.toString()),
-    //     confidence: Value((payload['confidence'] is num)
-    //         ? (payload['confidence'] as num).toDouble()
-    //         : null),
-    //     metaJson: Value(null),
-    //   ));
-    // }
+    final s = ('$title $body').toLowerCase();
+    final priority = (msg['priority'] is num) ? (msg['priority'] as num).toInt() : 0;
+    final isFall = s.contains('fall') || priority >= 8;
+
+    if (isFall) {
+      _startReminders();
+
+      try {
+        await _fallDb.insertFall(
+          FallEventsCompanion.insert(
+            occurredAtUtc: DateTime.now().toUtc(),
+            source: const Value('gotify'),
+            metaJson: Value(jsonEncode(msg)),
+          ),
+        );
+      } catch (e, st) {
+        debugPrint('[FALL_LOG] insert FAILED: $e');
+        debugPrint('$st');
+      }
+    }
+
+    setState(() {});
   }
 
   // Called from the Settings page when the user taps "Save & Connect".
   void _saveGotifyConfig(String url, String token) {
     _serverUrl = url.trim();
-    _appToken = token.trim();
+    _clientToken = token.trim();
 
     // Close any existing connection before opening a new one
     _gotify?.disconnect();
+    setState(() => _gotifyConnected = false);
 
-    if (_serverUrl.isNotEmpty && _appToken.isNotEmpty) {
+    if (_serverUrl.isNotEmpty && _clientToken.isNotEmpty) {
       // Create a new Gotify service and start listening for messages
-      _gotify = GotifyService(baseUrl: _serverUrl, appToken: _appToken);
-      _gotify!.connect(_onGotifyMessage);
+      _gotify = GotifyService(baseUrl: _serverUrl, clientToken: _clientToken);
+      _gotify!.connect(
+          _onGotifyMessage,
+          onStatus: (connected) {
+            if (!mounted) return;
+            setState(() => _gotifyConnected = connected);
+          },
+      );
 
       // Confirmation message at bottom of screen
       ScaffoldMessenger.of(context).showSnackBar(
@@ -298,6 +310,7 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
       _Home( // Tab 0: Overview
         last: _last,
         needsAttention: _needsAttention,
+        isConnected: _gotifyConnected,
         onAcknowledge: _acknowledgeAttention,
       ),
       _Alerts( // Tab 1: Alert history
@@ -313,7 +326,8 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
 
       _Settings( // Tab 3: Settings form for Gotify
         serverUrl: _serverUrl,
-        appToken: _appToken,
+        clientToken: _clientToken,
+        isConnected: _gotifyConnected,
         onSave: _saveGotifyConfig,
         themeMode: widget.themeMode,
         onThemeChanged: widget.onThemeChanged,
@@ -337,14 +351,6 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
           NavigationDestination(icon: Icon(Icons.settings_outlined),    label: 'Settings'),
         ],
       ),
-      // Floating action button is only visible on the Alerts tab
-      floatingActionButton: _index == 1
-          ? FloatingActionButton.extended(
-        icon: const Icon(Icons.add_alert),
-        label: const Text('Simulate Fall'),
-        onPressed: _addInitialFallAlert,
-      )
-          : null,
     );
   }
 }
@@ -354,73 +360,86 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
 // ----------------------------------------------------------
 // Displays current system status and a red banner if reminders are active.
 class _Home extends StatelessWidget {
-  final _Alert? last;             // Most recent alert
-  final bool needsAttention;      // Whether reminders are active
-  final VoidCallback onAcknowledge; // Called when user taps "Acknowledge"
+  final _Alert? last;
+  final bool needsAttention;
+  final bool isConnected;
+  final VoidCallback onAcknowledge;
+
   const _Home({
     required this.last,
     required this.needsAttention,
+    required this.isConnected,
     required this.onAcknowledge,
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isIdle = last == null && !needsAttention; // True if system idle
+    final systemColor = isConnected ? Colors.green : Colors.orange;
+    final monitoringColor = needsAttention ? Colors.red : Colors.green;
+    final monitoringText = needsAttention ? 'Attention Required' : 'Monitoring';
 
     return Padding(
       padding: const EdgeInsets.all(16),
       child: ListView(
         children: [
-          // ----- Red banner while reminders are active -----
           if (needsAttention)
             Card(
               color: Colors.red.withValues(alpha: 0.12),
               child: ListTile(
                 leading: const Icon(Icons.priority_high),
                 title: const Text('Attention required'),
-                subtitle: const Text('Periodic reminders are active until acknowledged.'),
+                subtitle: const Text(
+                  'Periodic reminders are active until acknowledged',
+                ),
                 trailing: FilledButton(
                   onPressed: onAcknowledge,
                   child: const Text('Acknowledge'),
                 ),
               ),
             ),
+
           const SizedBox(height: 12),
 
-          // ----- System Status Card -----
           Card(
-            clipBehavior: Clip.antiAlias,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('System Status', style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 8),
-                  // Status chip (Idle / Attention / Critical)
-                  Chip(
-                    avatar: Icon(isIdle ? Icons.check_circle : Icons.error, size: 18),
-                    label: Text(isIdle ? 'Idle' : (needsAttention ? 'ATTENTION' : 'CRITICAL')),
-                    side: BorderSide.none,
-                    backgroundColor:
-                    (isIdle ? Colors.teal : Colors.red).withValues(alpha: 0.15),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    last?.message ?? 'No recent activity.',
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Icon(Icons.access_time, size: 16),
-                      const SizedBox(width: 6),
-                      Text(last == null ? '—' : _relative(last!.time)),
-                    ],
-                  ),
-                ],
+            child: ListTile(
+              leading: Icon(Icons.cloud_done_outlined, color: systemColor),
+              title: const Text('System Status'),
+              subtitle: Text(
+                isConnected ? 'Connected to Gotify' : 'Not connected to Gotify',
               ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          Card(
+            child: ListTile(
+              leading: Icon(Icons.sensors_outlined, color: monitoringColor),
+              title: const Text('Monitoring Status'),
+              subtitle: Text(monitoringText),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.notifications_active_outlined),
+              title: const Text('Last Alert'),
+              subtitle: last == null
+                  ? const Text('No alerts yet')
+                  : Text('${last!.title} • ${_relative(last!.time)}'),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          const Card(
+            child: ListTile(
+              leading: Icon(Icons.analytics_outlined),
+              title: Text('Fall Log'),
+              subtitle: Text('Recent fall events are saved in the Log tab.'),
             ),
           ),
         ],
@@ -462,7 +481,7 @@ class _Alerts extends StatelessWidget {
         // List of alert cards (or placeholder if empty)
         Expanded(
           child: alerts.isEmpty
-              ? const Center(child: Text('No alerts yet. Tap “Simulate Fall”.'))
+              ? const Center(child: Text('No alerts yet. Waiting for Gotify messages...'))
               : ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: alerts.length,
@@ -496,18 +515,20 @@ class _Alerts extends StatelessWidget {
 // Lets the user enter a Gotify URL & token, and save/connect.
 class _Settings extends StatefulWidget {
   final String serverUrl;                         // current URL (from _Root)
-  final String appToken;                          // current token (from _Root)
+  final String clientToken;                          // current token (from _Root)
   final void Function(String url, String token) onSave; // callback to save
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeChanged;
+  final bool isConnected;
 
   const _Settings({
     super.key,
     required this.serverUrl,
-    required this.appToken,
+    required this.clientToken,
     required this.onSave,
     required this.themeMode,
     required this.onThemeChanged,
+    required this.isConnected,
   });
 
   @override
@@ -523,7 +544,7 @@ class _SettingsState extends State<_Settings> {
     super.initState();
     // Preload existing values into the text fields
     _urlCtrl = TextEditingController(text: widget.serverUrl);
-    _tokenCtrl = TextEditingController(text: widget.appToken);
+    _tokenCtrl = TextEditingController(text: widget.clientToken);
   }
 
   @override
@@ -538,54 +559,66 @@ class _SettingsState extends State<_Settings> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Card for Gotify connection input fields
+        // Card for Gotify connection input fields (collapses when connected)
         Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Gotify Connection', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                const Text('Enter your Gotify server address and app token below.'),
-                const SizedBox(height: 12),
-                // Server URL field
-                TextField(
-                  controller: _urlCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Server URL',
-                    hintText: 'https://your-gotify-server:port',
-                    prefixIcon: Icon(Icons.cloud_outlined),
-                  ),
-                  keyboardType: TextInputType.url,
-                ),
-                const SizedBox(height: 8),
-                // App token field
-                TextField(
-                  controller: _tokenCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'App Token',
-                    prefixIcon: Icon(Icons.vpn_key_outlined),
-                  ),
-                  obscureText: true, // hide token
-                ),
-                const SizedBox(height: 16),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton.icon(
-                    icon: const Icon(Icons.save_outlined),
-                    label: const Text('Save & Connect'),
-                    onPressed: () {
-                      // Pass values back to parent (_Root)
-                      widget.onSave(_urlCtrl.text, _tokenCtrl.text);
-                      FocusScope.of(context).unfocus(); // Close keyboard
-                    },
-                  ),
-                ),
-              ],
+          child: ExpansionTile(
+            initiallyExpanded: !widget.isConnected,
+            leading: Icon(
+              widget.isConnected ? Icons.check_circle : Icons.cloud_outlined,
+              color: widget.isConnected ? Colors.green : null,
             ),
+            title: const Text('Gotify Connection'),
+            subtitle: Text(widget.isConnected ? 'Connected' : 'Not connected'),
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Enter your Gotify server address and client token below.'),
+                    const SizedBox(height: 12),
+
+                    // Server URL field
+                    TextField(
+                      controller: _urlCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Server URL',
+                        hintText: 'https://your-gotify-server:port',
+                        prefixIcon: Icon(Icons.cloud_outlined),
+                      ),
+                      keyboardType: TextInputType.url,
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Client token field
+                    TextField(
+                      controller: _tokenCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Client Token',
+                        prefixIcon: Icon(Icons.vpn_key_outlined),
+                      ),
+                      obscureText: true,
+                    ),
+                    const SizedBox(height: 16),
+
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton.icon(
+                        icon: const Icon(Icons.save_outlined),
+                        label: const Text('Save & Connect'),
+                        onPressed: () {
+                          widget.onSave(_urlCtrl.text, _tokenCtrl.text);
+                          FocusScope.of(context).unfocus();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
+
         const SizedBox(height: 12),
 
         Card(
@@ -597,16 +630,7 @@ class _SettingsState extends State<_Settings> {
                 const ListTile(
                   leading: Icon(Icons.brightness_6_outlined),
                   title: Text('Theme'),
-                  subtitle:
-                  Text('Choose light, dark, or follow system setting.'),
-                ),
-                RadioListTile<ThemeMode>(
-                  title: const Text('System default'),
-                  value: ThemeMode.system,
-                  groupValue: widget.themeMode,
-                  onChanged: (mode) {
-                    if (mode != null) widget.onThemeChanged(mode);
-                  },
+                  subtitle: Text('Choose light or dark mode.'),
                 ),
                 RadioListTile<ThemeMode>(
                   title: const Text('Light'),
@@ -634,7 +658,7 @@ class _SettingsState extends State<_Settings> {
           child: ListTile(
             leading: Icon(Icons.info_outline),
             title: Text('About RADIAN'),
-            subtitle: Text('Prototype UI with periodic reminders.'),
+            subtitle: Text('Real-time radar-based fall detection system with mobile alerts and event logging for caregiver monitoring.'),
           ),
         ),
       ],
