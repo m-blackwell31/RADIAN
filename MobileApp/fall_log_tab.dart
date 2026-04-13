@@ -95,18 +95,11 @@ class _FallLogTabState extends State<FallLogTab> {
                           final e = events[idx];
                           final local = e.occurredAtUtc.toLocal(); // Convert UTC → local
                           final tFmt = DateFormat('EEE, MMM d — h:mm a');
-                          final subtitle = e.location?.isNotEmpty == true
-                              ? '${tFmt.format(local)} · ${e.location}'
-                              : tFmt.format(local);
-                          final trailing = (e.confidence != null)
-                              ? Text('${(e.confidence! * 100).toStringAsFixed(0)}%')
-                              : const SizedBox.shrink();
+                          final subtitle = tFmt.format(local);
 
-                          // Single fall entry
                           return ListTile(
                             title: const Text('Fall detected'),
                             subtitle: Text(subtitle),
-                            trailing: trailing,
                           );
                         },
                       ),
