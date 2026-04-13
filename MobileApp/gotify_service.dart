@@ -13,6 +13,7 @@
 import 'dart:convert'; // For JSON encoding/decoding
 import 'package:http/http.dart' as http; // For HTTP requests (sending messages)
 import 'package:web_socket_channel/web_socket_channel.dart'; // For live message streaming
+import 'package:flutter/foundation.dart' show debugPrint;
 
 // ---------------------------------------------------------------
 // Typedef: describes the callback function signature
@@ -20,7 +21,8 @@ import 'package:web_socket_channel/web_socket_channel.dart'; // For live message
 // When Gotify pushes a message over WebSocket, your app's callback
 // receives the decoded JSON map. You’ll pass this function in
 // when calling connect() from your main.dart.
-typedef GotifyCallback = void Function(Map<String, dynamic> msg);
+typedef GotifyCallback = Future<void> Function(Map<String, dynamic> msg);
+typedef GotifyStatusCallback = void Function(bool connected);
 
 // ---------------------------------------------------------------
 // CLASS: GotifyService
@@ -30,7 +32,7 @@ typedef GotifyCallback = void Function(Map<String, dynamic> msg);
 //
 //   final gotify = GotifyService(
 //     baseUrl: 'https://192.168.1.50:8080',
-//     appToken: 'YOUR_APP_TOKEN',
+//     clientToken: 'YOUR_CLIENT_TOKEN',
 //   );
 //   gotify.connect((msg) { print(msg); });
 //
@@ -42,14 +44,14 @@ class GotifyService {
   // Instance variables
   // -------------------------------------------------------------
   final String baseUrl;   // e.g., https://192.168.1.50:8080
-  final String appToken;  // App token generated from Gotify dashboard
+  final String clientToken;  // App token generated from Gotify dashboard
 
   WebSocketChannel? _channel; // Active WebSocket connection (if connected)
 
   // -------------------------------------------------------------
   // Constructor
   // -------------------------------------------------------------
-  GotifyService({required this.baseUrl, required this.appToken});
+  GotifyService({required this.baseUrl, required this.clientToken});
 
   // -------------------------------------------------------------
   // METHOD: send()
@@ -70,7 +72,7 @@ class GotifyService {
       uri,
       headers: {
         'Content-Type': 'application/json',
-        'X-Gotify-Key': appToken, // Token authenticates this client
+        'X-Gotify-Key': clientToken, // Token authenticates this client
       },
       // The Gotify server expects JSON like:
       // {"title": "ALERT", "message": "details...", "priority": 5}
@@ -102,7 +104,7 @@ class GotifyService {
   //   });
   //
   // -------------------------------------------------------------
-  void connect(GotifyCallback onMessage) {
+  void connect(GotifyCallback onMessage, {GotifyStatusCallback? onStatus}) {
     // Gotify supports both http/ws and https/wss schemes.
     final isHttps = baseUrl.toLowerCase().startsWith('https');
     final scheme = isHttps ? 'wss' : 'ws'; // Use secure socket for https URLs
@@ -114,13 +116,14 @@ class GotifyService {
 
     // Build the final WebSocket URL
     // Example: wss://your-server/stream?token=YOUR_APP_TOKEN
-    final wsUrl = Uri.parse('$scheme://$host/stream?token=$appToken');
+    final wsUrl = Uri.parse('$scheme://$host/stream?token=$clientToken');
 
     // Close any existing connection first to avoid duplicates
     _channel?.sink.close();
 
     // Open a new WebSocket connection
     _channel = WebSocketChannel.connect(wsUrl);
+    onStatus?.call(true);
 
     // Listen for incoming messages from Gotify
     _channel!.stream.listen(
@@ -129,18 +132,25 @@ class GotifyService {
         try {
           final data = jsonDecode(event);
           // If the message is a valid JSON map, pass it to your callback
-          if (data is Map<String, dynamic>) onMessage(data);
+          if (data is Map<String, dynamic>) {
+            onMessage(data).catchError((e, st) {
+              debugPrint('Gotify onMessage error: $e');
+              debugPrint(st);
+            });
+          }
         } catch (_) {
           // Ignore malformed messages silently
         }
       },
       // Handle WebSocket errors (e.g., network issues)
       onError: (error) {
-        print('Gotify WebSocket error: $error');
+        debugPrint('Gotify WebSocket error: $error');
+        onStatus?.call(false);
       },
       // Handle normal or unexpected connection closures
       onDone: () {
-        print('Gotify WebSocket connection closed');
+        debugPrint('Gotify WebSocket connection closed');
+        onStatus?.call(false);
       },
     );
   }
