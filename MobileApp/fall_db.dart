@@ -32,6 +32,9 @@ class FallEvents extends Table {
   // Optional confidence (0.0 to 1.0)
   RealColumn get confidence => real().nullable()();
 
+  // Type of Fall
+  TextColumn get fallType => text().nullable()();
+
   // Where the entry came from (e.g., "gotify", "manual")
   TextColumn get source => text().withDefault(const Constant('gotify'))();
 
@@ -49,7 +52,20 @@ class FallDb extends _$FallDb {
 
   // Increment this if you ever change the schema (add/remove columns, etc.)
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  // Adding a migration
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) async {
+      await m.createAll();
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.addColumn(fallEvents, fallEvents.fallType);
+      }
+    },
+  );
 
   // Insert a new fall event
   Future<int> insertFall(FallEventsCompanion e) => into(fallEvents).insert(e);
