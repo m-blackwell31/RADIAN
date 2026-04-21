@@ -9,14 +9,15 @@
 // ==========================================================
 
 import 'dart:async';                     // For periodic timers
+import 'dart:convert';                    // For jsonEncode/jsonDecode
 import 'package:flutter/material.dart';  // Flutter UI framework
-import 'gotify_service.dart';            // Custom file to handle Gotify comms
-
+import 'services/gotify_service.dart';            // Custom file to handle Gotify comms
+import 'services/system_status_service.dart'; // Watchdog/radar heartbeat status
+import 'login_screen.dart';                // Login page
 // >>> ADDED: imports for the caregiver Fall Log feature & local DB
 import 'package:radian/data/fall_db.dart';
 import 'package:radian/features/fall_log/fall_log_tab.dart';
 import 'package:shared_preferences/shared_preferences.dart'; //for saving theme
-import 'dart:convert';  // for jsonEncode
 import 'package:drift/drift.dart' show Value; // for Drift companions
 
 void main() => runApp(const RadianApp()); // Entry point for Flutter
@@ -38,7 +39,8 @@ class _RadianAppState extends State<RadianApp> {
   // THEME STATE
   // --------------------------------------------------------
   ThemeMode _themeMode = ThemeMode.light; // default to system theme (light mode)
-
+  bool _isLoggedIn = false;
+  String? _loggedInUsername;
   // Load saved theme preference from Shared Preferences
   @override
   void initState() {
@@ -61,6 +63,23 @@ class _RadianAppState extends State<RadianApp> {
     await prefs.setInt('themeMode', value);
     setState(() {
       _themeMode = mode;
+    });
+  }
+
+  // ---------------
+  // LOGIN HANDLERS
+  // ---------------
+  void _handleLoginSuccess(String username) {
+    setState(() {
+      _isLoggedIn = true;
+      _loggedInUsername = username;
+    });
+  }
+
+  void _handleLogout() {
+    setState(() {
+      _isLoggedIn = false;
+      _loggedInUsername = null;
     });
   }
 
@@ -92,10 +111,16 @@ class _RadianAppState extends State<RadianApp> {
         ),
       ),
 
-      home: _Root(
-        themeMode: _themeMode,
-        onThemeChanged: _setTheme,
-      ),
+      home: _isLoggedIn
+        ? _Root(
+            themeMode: _themeMode,
+            onThemeChanged: _setTheme,
+            onLogout: _handleLogout,
+            loggedInUsername: _loggedInUsername ?? 'user',
+          )
+        : LoginScreen(
+            onLoginSuccess: _handleLoginSuccess,
+          ),
     );
   }
 }
@@ -109,10 +134,14 @@ class _Root extends StatefulWidget {
     super.key,
     required this.themeMode,
     required this.onThemeChanged,
+    required this.onLogout,
+    required this.loggedInUsername,
   });
 
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeChanged;
+  final VoidCallback onLogout;
+  final String loggedInUsername;
 
   @override
   State<_Root> createState() => _RootState();
@@ -138,11 +167,13 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
   // GOTIFY CONNECTION VARIABLES
   // -------------------------------
   String _serverUrl = '';         // User-entered Gotify server URL
-  String _clientToken = '';          // User-entered Gotify app token
+  String _clientToken = '';          // User-entered Gotify client token
   GotifyService? _gotify;         // Active Gotify connection instance
 
-  // >>> ADDED: shared DB instance for the Fall Log tab (and optional ingestion)
-  // Keeping it local to _Root so we don't touch your app structure.
+  // -------------------------------
+  // WATCHDOG / SYSTEM STATUS
+  // -------------------------------
+  final SystemStatusService _systemStatus = SystemStatusService();
   final FallDb _fallDb = FallDb();
 
   // -------------------------------
@@ -152,6 +183,7 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this); // Watch app lifecycle events
+    _systemStatus.startWatchdog();
   }
 
   @override
@@ -159,6 +191,7 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _reminderTimer?.cancel(); // Stop any running reminder timer
     _gotify?.disconnect();    // Close Gotify WebSocket connection
+    _systemStatus.stopWatchdog();
 
     // >>> ADDED: close DB (optional; safe to omit on mobile, but clean)
     _fallDb.close();
@@ -173,27 +206,7 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) _acknowledgeAttention();
     super.didChangeAppLifecycleState(state);
   }
-
-  // ----------------------------------------------------------
-  // LOCAL ALERT SIMULATION (for demo)
-  // ----------------------------------------------------------
-  // Adds a "FALL DETECTED" alert manually when the button is pressed.
-  /*
-  void _addInitialFallAlert() {
-    _alerts.insert(0,
-      _Alert(
-        DateTime.now(),
-        'FALL DETECTED',
-        'Possible fall event. Verify occupant safety.',
-        isReminder: false,
-      ),
-    );
-    _startReminders(); // Begin periodic follow-up reminders
-    setState(() {});   // Refresh the UI
-  }
-  */
-
-  // ----------------------------------------------------------
+  
   // REMINDER HANDLING
   // ----------------------------------------------------------
   // Starts a repeating timer that adds a "Reminder" alert every 30 seconds.
@@ -240,10 +253,32 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
     final title = (msg['title'] ?? 'Alert').toString();
     final body  = (msg['message'] ?? '').toString();
 
+    // ------------------
+    // Watchdog
+    // ------------------
+    try {
+      final decoded = jsonDecode(body);
+
+      if (decoded is Map<String, dynamic>) {
+        final type = decoded['type']?.toString();
+
+        if (type == 'heartbeat') {
+          final ts = decoded['timestamp']?.toString();
+          final parsedUtc = ts != null ? DateTime.tryParse(ts)?.toUtc() : null;
+
+          _systemStatus.recordHeartbeat(timestampUtc: parsedUtc);
+          return; // Do not add heartbeat to alerts or fall log
+        }
+      }
+    } catch (_) {
+      // Body was not JSON, continue with normal alert handling
+    }
+
     _alerts.insert(0, _Alert(DateTime.now(), title, body, isReminder: false));
 
     final s = ('$title $body').toLowerCase();
-    final priority = (msg['priority'] is num) ? (msg['priority'] as num).toInt() : 0;
+    final priority =
+    (msg['priority'] is num) ? (msg['priority'] as num).toInt() : 0;
     final isFall = s.contains('fall') || priority >= 8;
 
     if (isFall) {
@@ -258,7 +293,7 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
           ),
         );
       } catch (e, st) {
-        debugPrint('[FALL_LOG] insert FAILED: $e');
+        debugPrint('DB insert failed: $e');
         debugPrint('$st');
       }
     }
@@ -311,6 +346,7 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
         last: _last,
         needsAttention: _needsAttention,
         isConnected: _gotifyConnected,
+        systemStatus: _systemStatus,
         onAcknowledge: _acknowledgeAttention,
       ),
       _Alerts( // Tab 1: Alert history
@@ -338,6 +374,13 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
       appBar: AppBar(
         // >>> UPDATED: added "Log" to keep titles aligned with 4 tabs
         title: Text(['RADIAN', 'Alerts', 'Log', 'Settings'][_index]),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
+            onPressed: widget.onLogout,
+          ),
+        ],
       ),
       body: pages[_index],
       bottomNavigationBar: NavigationBar(
@@ -363,86 +406,124 @@ class _Home extends StatelessWidget {
   final _Alert? last;
   final bool needsAttention;
   final bool isConnected;
+  final SystemStatusService systemStatus;
   final VoidCallback onAcknowledge;
 
   const _Home({
     required this.last,
     required this.needsAttention,
     required this.isConnected,
+    required this.systemStatus,
     required this.onAcknowledge,
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
-    final systemColor = isConnected ? Colors.green : Colors.orange;
+    final systemColor = isConnected ? Colors.green : Colors.red;
     final monitoringColor = needsAttention ? Colors.red : Colors.green;
     final monitoringText = needsAttention ? 'Attention Required' : 'Monitoring';
 
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: ListView(
-        children: [
-          if (needsAttention)
-            Card(
-              color: Colors.red.withValues(alpha: 0.12),
-              child: ListTile(
-                leading: const Icon(Icons.priority_high),
-                title: const Text('Attention required'),
-                subtitle: const Text(
-                  'Periodic reminders are active until acknowledged',
+      child: AnimatedBuilder(
+        animation: systemStatus,
+        builder: (context, _) {
+          final radarStatus = systemStatus.radarStatus;
+
+          Color radarColor;
+          IconData radarIcon;
+
+          switch (radarStatus) {
+            case RadarStatus.active:
+              radarColor = Colors.green;
+              radarIcon = Icons.check_circle;
+              break;
+            case RadarStatus.offline:
+              radarColor = Colors.red;
+              radarIcon = Icons.cancel;
+              break;
+          }
+
+          return ListView(
+            children: [
+              if (needsAttention)
+                Card(
+                  color: Colors.red.withValues(alpha: 0.12),
+                  child: ListTile(
+                    leading: const Icon(Icons.priority_high),
+                    title: const Text('Attention required'),
+                    subtitle: const Text(
+                      'Periodic reminders are active until acknowledged',
+                    ),
+                    trailing: FilledButton(
+                      onPressed: onAcknowledge,
+                      child: const Text('Acknowledge'),
+                    ),
+                  ),
                 ),
-                trailing: FilledButton(
-                  onPressed: onAcknowledge,
-                  child: const Text('Acknowledge'),
+
+              const SizedBox(height: 12),
+
+              Card(
+                child: ListTile(
+                  leading: Icon(Icons.cloud_done_outlined, color: systemColor),
+                  title: const Text('Server Status'),
+                  subtitle: Text(
+                    isConnected
+                        ? 'Connected to Gotify'
+                        : 'Not connected to Gotify',
+                  ),
                 ),
               ),
-            ),
 
-          const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-          Card(
-            child: ListTile(
-              leading: Icon(Icons.cloud_done_outlined, color: systemColor),
-              title: const Text('System Status'),
-              subtitle: Text(
-                isConnected ? 'Connected to Gotify' : 'Not connected to Gotify',
+              Card(
+                child: ListTile(
+                  leading: Icon(radarIcon, color: radarColor),
+                  title: const Text('Radar Status'),
+                  subtitle: Text(
+                      '${systemStatus.statusLabel} • Last heartbeat: ${systemStatus.lastHeartbeatLabel}'
+                  ),
+                ),
               ),
-            ),
-          ),
 
-          const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-          Card(
-            child: ListTile(
-              leading: Icon(Icons.sensors_outlined, color: monitoringColor),
-              title: const Text('Monitoring Status'),
-              subtitle: Text(monitoringText),
-            ),
-          ),
+              Card(
+                child: ListTile(
+                  leading: Icon(Icons.sensors_outlined, color: monitoringColor),
+                  title: const Text('Monitoring Status'),
+                  subtitle: Text(monitoringText),
+                ),
+              ),
 
-          const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.notifications_active_outlined),
-              title: const Text('Last Alert'),
-              subtitle: last == null
-                  ? const Text('No alerts yet')
-                  : Text('${last!.title} • ${_relative(last!.time)}'),
-            ),
-          ),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.notifications_active_outlined),
+                  title: const Text('Last Alert'),
+                  subtitle: last == null
+                      ? const Text('No alerts yet')
+                      : Text('${last!.title} • ${_relative(last!.time)}'),
+                ),
+              ),
 
-          const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.analytics_outlined),
-              title: Text('Fall Log'),
-              subtitle: Text('Recent fall events are saved in the Log tab.'),
-            ),
-          ),
-        ],
+              const Card(
+                child: ListTile(
+                  leading: Icon(Icons.analytics_outlined),
+                  title: Text('Fall Log'),
+                  subtitle: Text(
+                      'Recent fall events are saved in the Log tab.'),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
