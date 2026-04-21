@@ -276,10 +276,18 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
 
     _alerts.insert(0, _Alert(DateTime.now(), title, body, isReminder: false));
 
-    final s = ('$title $body').toLowerCase();
-    final priority =
-    (msg['priority'] is num) ? (msg['priority'] as num).toInt() : 0;
-    final isFall = s.contains('fall') || priority >= 8;
+    String? msgType;
+
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        msgType = decoded['type']?.toString();
+      }
+    } catch (_) {
+      // not JSON, ignore
+    }
+
+    final isFall = msgType == 'fall';
 
     if (isFall) {
       _startReminders();
