@@ -254,15 +254,25 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
     Map<String, dynamic>? decodedBody;
     String? msgType;
 
+    // ------------------
+    // Decode JSON body
+    // ------------------
     try {
       final decoded = jsonDecode(body);
       if (decoded is Map<String, dynamic>) {
         decodedBody = decoded;
         msgType = decoded['type']?.toString();
       }
-    } catch (_) {
-      // Body was not JSON, so leave decodedBody/msgType null
+    } catch (e) {
+      debugPrint('jsonDecode failed: $e');
     }
+
+    // ------------------
+    // Debug prints (IMPORTANT)
+    // ------------------
+    debugPrint('Gotify title: $title');
+    debugPrint('Gotify body: $body');
+    debugPrint('Parsed msgType: $msgType');
 
     // ------------------
     // Heartbeat handling
@@ -271,30 +281,36 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
       final ts = decodedBody?['timestamp']?.toString();
       final parsedUtc = ts != null ? DateTime.tryParse(ts)?.toUtc() : null;
 
+      debugPrint('Heartbeat received at: $parsedUtc');
+
       _systemStatus.recordHeartbeat(timestampUtc: parsedUtc);
-      return; // Do not add heartbeat to alerts or fall log
+      return; // do NOT add to alerts or log
     }
 
-    // Add all non-heartbeat messages to Alerts tab
+    // ------------------
+    // Add to Alerts tab
+    // ------------------
     _alerts.insert(0, _Alert(DateTime.now(), title, body, isReminder: false));
 
     // ------------------
-    // Fall handling
+    // Fall detection
     // ------------------
     final isFall = msgType == 'fall';
+    debugPrint('isFall = $isFall');
 
     if (isFall) {
       _startReminders();
 
       try {
-        await _fallDb.insertFall(
+        final rowId = await _fallDb.insertFall(
           FallEventsCompanion.insert(
             occurredAtUtc: DateTime.now().toUtc(),
             source: const Value('gotify'),
             metaJson: Value(jsonEncode(msg)),
           ),
         );
-        debugPrint('Fall logged successfully');
+
+        debugPrint('Fall logged successfully. rowId=$rowId');
       } catch (e, st) {
         debugPrint('DB insert failed: $e');
         debugPrint('$st');
