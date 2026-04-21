@@ -247,46 +247,40 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
   // ----------------------------------------------------------
   // GOTIFY EVENT HANDLERS
   // ----------------------------------------------------------
-
-  // Called every time a new message arrives from the Gotify WebSocket.
   Future<void> _onGotifyMessage(Map<String, dynamic> msg) async {
     final title = (msg['title'] ?? 'Alert').toString();
     final body  = (msg['message'] ?? '').toString();
 
-    // ------------------
-    // Watchdog
-    // ------------------
-    try {
-      final decoded = jsonDecode(body);
-
-      if (decoded is Map<String, dynamic>) {
-        final type = decoded['type']?.toString();
-
-        if (type == 'heartbeat') {
-          final ts = decoded['timestamp']?.toString();
-          final parsedUtc = ts != null ? DateTime.tryParse(ts)?.toUtc() : null;
-
-          _systemStatus.recordHeartbeat(timestampUtc: parsedUtc);
-          return; // Do not add heartbeat to alerts or fall log
-        }
-      }
-    } catch (_) {
-      // Body was not JSON, continue with normal alert handling
-    }
-
-    _alerts.insert(0, _Alert(DateTime.now(), title, body, isReminder: false));
-
+    Map<String, dynamic>? decodedBody;
     String? msgType;
 
     try {
       final decoded = jsonDecode(body);
       if (decoded is Map<String, dynamic>) {
+        decodedBody = decoded;
         msgType = decoded['type']?.toString();
       }
     } catch (_) {
-      // not JSON, ignore
+      // Body was not JSON, so leave decodedBody/msgType null
     }
 
+    // ------------------
+    // Heartbeat handling
+    // ------------------
+    if (msgType == 'heartbeat') {
+      final ts = decodedBody?['timestamp']?.toString();
+      final parsedUtc = ts != null ? DateTime.tryParse(ts)?.toUtc() : null;
+
+      _systemStatus.recordHeartbeat(timestampUtc: parsedUtc);
+      return; // Do not add heartbeat to alerts or fall log
+    }
+
+    // Add all non-heartbeat messages to Alerts tab
+    _alerts.insert(0, _Alert(DateTime.now(), title, body, isReminder: false));
+
+    // ------------------
+    // Fall handling
+    // ------------------
     final isFall = msgType == 'fall';
 
     if (isFall) {
@@ -300,6 +294,7 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
             metaJson: Value(jsonEncode(msg)),
           ),
         );
+        debugPrint('Fall logged successfully');
       } catch (e, st) {
         debugPrint('DB insert failed: $e');
         debugPrint('$st');
