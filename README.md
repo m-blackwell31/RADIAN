@@ -21,7 +21,7 @@ RADIAN is a human fall detection system developed for the Texas A&M University E
     ├── data/             # Demo videos, pipeline diagrams, ML documentation
     ├── physical/         # Power board validation, datasheets, solder inspection photos
     ├── wireless/         # Raw radar testing data (.ndjson files) — falls and non-falls
-    └── logo/             # RADIAN branding assets
+    └── logo/             # RADIAN logo
 ```
 
 ---
