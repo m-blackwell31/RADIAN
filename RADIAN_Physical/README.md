@@ -20,9 +20,6 @@ This directory contains all physical design files for the RADIAN fall detection 
 │   ├── RADIAN.PcbDoc            # Board layout
 │   ├── BOM.xlsx                 # Bill of materials
 │   └── Gerbers/                 # Fabrication output files
-├── Assembly/
-│   ├── assembly_drawing.pdf     # Component placement guide
-│   └── photos/                  # Build photos
 └── README.md
 ```
 
