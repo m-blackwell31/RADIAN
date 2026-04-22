@@ -46,7 +46,7 @@ This directory contains all physical design files for the RADIAN fall detection 
 |---|---|
 | MP2615 | Battery charger IC |
 | AP64501SP-1 | Buck Converter |
-| 2-8252 | Protection IC
+| S-8252 | Protection IC
 
 ---
 
