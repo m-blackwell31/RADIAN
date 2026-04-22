@@ -2,7 +2,7 @@
 
 ## Overview
 
-This directory contains all physical design files for the RADIAN fall detection system, including the enclosure, PCB mounting hardware, and battery/component layout. The physical subsystem houses the Raspberry Pi compute module, mmWave radar sensor, power electronics, and buzzer in a compact, wearable-friendly enclosure.
+This directory contains all physical design files for the RADIAN fall detection system, including the enclosure, PCB mounting hardware, and battery/component layout. The physical subsystem houses the Raspberry Pi compute module, mmWave radar sensor, power electronics, and buzzer in a compact, mountable enclosure.
 
 ---
 
@@ -35,37 +35,24 @@ This directory contains all physical design files for the RADIAN fall detection 
 - Mounting features for PCB standoffs and sensor window cutout
 - Export formats: `.SLDPRT`, `.SLDASM`, PDF drawings
 
-> **Note:** A mass properties discrepancy was identified during design review — verify final mass against the assembly drawing before fabrication.
-
 ---
 
 ## PCB Design
 
 - Designed in **Altium Designer**
-- Includes power regulation (buck converter), MP2615 battery charger, UART communication lines, and GPIO buzzer output (GPIO27)
+- Includes power regulation (buck converter), MP2615 battery charger, and S-8252 protection IC 
 - Battery: 2S2P 7,000 mAh LiPo pack (~3h 45m runtime under ~1,500 mA load)
 
 ### Key Components
 
 | Component | Description |
 |---|---|
-| Raspberry Pi | Main compute module |
-| mmWave Radar | Fall detection sensor |
 | MP2615 | Battery charger IC |
-| Buck Converter | Voltage regulation |
-| Buzzer (GPIO27) | Fall alert output |
+| AP64501SP-1 | Buck Converter |
+| 2-8252 | Protection IC
 
 ---
 
-## Hardware Assembly Notes
-
-1. Mount PCB using M2.5 standoffs in enclosure mounting holes
-2. Route mmWave sensor flush with enclosure sensor window
-3. Connect battery pack to MP2615 charger input
-4. Verify buzzer polarity before soldering (GPIO27 active-high)
-5. Run CPU stress test and UART comms validation before final enclosure close
-
----
 
 ## Tools Required
 
