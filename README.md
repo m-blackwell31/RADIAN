@@ -10,17 +10,17 @@ RADIAN is a human fall detection system developed for the Texas A&M University E
 
 ```
 /RADIAN
-├── fall_detector/        # ML model and fall detection algorithms (Python)
-├── MobileApp/            # Flutter/Dart mobile app for caregiver alerts
-├── RADIAN_Data/          # Radar data collection scripts and mmWave run files
-├── RADIAN_Physical/      # PCB design (Altium), CAD enclosure, power system
-├── RADIAN_Radar/         # Radar configuration files and sensor interface code
+├── fall_detector/        # ML models (.pkl), fall detector scripts, training code
+├── MobileApp/            # Flutter/Dart app (Gotify alerts, fall log, login screen)
+├── RADIAN_Data/          # mmWave data collection, CNN model, radar testing scripts
+├── RADIAN_Physical/      # PCB design (Altium), CAD enclosure, power system docs
+├── RADIAN_Radar/         # AWR6843ISK config (config3.cfg), mmwave_run6.py, requirements
 └── GoogleDrive/          # Project documentation, presentations, and reports
-    ├── docs/             # FSR, ICD, ConOps, final report, validation plan
-    ├── presentations/    # All 403 and 404 presentations
-    ├── data/             # Demo videos, diagrams, ML documentation
-    ├── physical/         # Power board validation, datasheets, solder inspection
-    ├── wireless/         # Radar testing data (.ndjson files)
+    ├── docs/             # FSR, ICD, ConOps, final report, validation plan, budget
+    ├── presentations/    # All 403 and 404 status update and demo presentations
+    ├── data/             # Demo videos, pipeline diagrams, ML documentation
+    ├── physical/         # Power board validation, datasheets, solder inspection photos
+    ├── wireless/         # Raw radar testing data (.ndjson files) — falls and non-falls
     └── logo/             # RADIAN branding assets
 ```
 
