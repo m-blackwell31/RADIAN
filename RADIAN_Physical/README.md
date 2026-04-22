@@ -16,7 +16,7 @@ This directory contains all physical design files for the RADIAN fall detection 
 │   └── drawings/                # Exported engineering drawings (PDF)
 ├── PCB/
 │   ├── RADIAN.PrjPcb            # Altium project file
-│   ├── Schematics/               # Schematics
+│   ├── Schematics/              # Schematics
 │   ├── RADIAN.PcbDoc            # Board layout
 │   ├── BOM.xlsx                 # Bill of materials
 │   └── Gerbers/                 # Fabrication output files
