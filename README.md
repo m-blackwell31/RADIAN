@@ -2,7 +2,7 @@
 
 ## Overview
 
-RADIAN is a human fall detection system developed by Team 60 for the Texas A&M University ECEN 403/404 Capstone Program. The system uses a mmWave radar sensor combined with machine learning algorithms to detect falls in real time and alert caregivers via a mobile app notification.
+RADIAN is a human fall detection system developed for the Texas A&M University ECEN 403/404 Capstone Course. The system uses a mmWave radar sensor combined with machine learning algorithms to detect falls in real time and alert caregivers via a mobile app notification.
 
 ---
 
@@ -28,7 +28,7 @@ RADIAN is a human fall detection system developed by Team 60 for the Texas A&M U
 
 ## System Description
 
-RADIAN uses a Texas Instruments AWR6843ISK mmWave radar sensor mounted at an elevated position to monitor a room. Point cloud data is streamed over UART to a Raspberry Pi, where a trained ExtraTrees machine learning classifier determines in real time whether a fall has occurred. Upon detection, a buzzer (GPIO27) alerts locally and a push notification is sent to the caregiver's mobile app via Gotify.
+RADIAN uses a Texas Instruments AWR6843ISK mmWave radar sensor mounted at an elevated position to monitor a room. Point cloud data is streamed over UART to a Raspberry Pi, where a trained ExtraTrees machine learning classifier determines in real time whether a fall has occurred. Upon detection, a buzzer (GPIO27) alerts locally, and a push notification is sent to the caregiver's mobile app via Gotify.
 
 ### Key Components
 
@@ -45,42 +45,14 @@ RADIAN uses a Texas Instruments AWR6843ISK mmWave radar sensor mounted at an ele
 
 ---
 
-## Getting Started
-
-### Running the Fall Detector
-
-SSH into the Raspberry Pi and run:
-
-```bash
-timeout 15 python3 mmwave_run6.py
-```
-
-The fall detector runs automatically on boot as a systemd service.
-
-### Mobile App
-
-See the `/MobileApp` directory for setup and build instructions.
-
----
-
 ## Team
 
 **Texas A&M University — ECEN 403/404 Capstone, Spring 2026**
-Team 60 — RADIAN Fall Detection System
+Team 60 — RADIAN
 
 | Name | GitHub |
 |---|---|
 | Matthew Blackwell | m-blackwell31 |
 | Wyatt Johnson | ANDYSALAD1 |
 | Mitch Hoffman | hoffmanmitchell |
-| wyattjohnson-a1ly | wyattjohnson-a1ly |
 
----
-
-## Instructors & Access
-
-This repository is shared with:
-- `kjnowka`
-- `pranav-d1993`
-- `johnlusher`
-- `skalafatis`
